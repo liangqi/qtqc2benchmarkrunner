@@ -24,6 +24,9 @@ class QtQuickControls2BenchmarksRunner:
         self.modules = ['qtbase', 'qtxmlpatterns', 'qtsvg', 'qtdeclarative', 'qtgraphicaleffects', 'qtquickcontrols', 'qtquickcontrols2']
         self.sha1s = list()
         self.results = list()
+        self.r_tags = list()
+        self.r_sha1s = list()
+        self.r_values = list()
         
     def initGitRepository(self):
         if os.path.exists(self.sourcedir):
@@ -89,26 +92,41 @@ class QtQuickControls2BenchmarksRunner:
                 if os.path.exists(resultfile):
                     self.results.append(resultfile)
 
-    def checkResult(self):
-        for resultfile in self.results:
-            if 'creationtime' not in resultfile: 
-                continue
-            xmldoc = minidom.parse(resultfile)
-            tclist = xmldoc.getElementsByTagName('TestCase')
-            for tc in tclist:
-                #print(tc.attributes['name'].value)
-                tflist = tc.getElementsByTagName('TestFunction')
-                for tf in tflist:
-                    if 'initTestCase' in tf.attributes['name'].value or 'cleanupTestCase' in tf.attributes['name'].value:
-                        continue
-                    print(tf.attributes['name'].value)
-                    brlist = tf.getElementsByTagName('BenchmarkResult')
-                    for br in brlist:
-                        print('tag:' + br.attributes['tag'].value
-                              + ', metric:' + br.attributes['metric'].value
-                              + ', value:' + br.attributes['value'].value
-                              + ', iterations:' + br.attributes['iterations'].value
-                              )
+    def checkResult(self, resultfile):
+        xmldoc = minidom.parse(resultfile)
+        tclist = xmldoc.getElementsByTagName('TestCase')
+        for tc in tclist:
+            #print(tc.attributes['name'].value)
+            tflist = tc.getElementsByTagName('TestFunction')
+            for tf in tflist:
+                if 'initTestCase' in tf.attributes['name'].value or 'cleanupTestCase' in tf.attributes['name'].value:
+                    continue
+                print('test: ' + tf.attributes['name'].value)
+                if tf.attributes['name'].value != 'controls':
+                    continue
+                brlist = tf.getElementsByTagName('BenchmarkResult')
+                brsize = len(brlist)
+                print('brsize:' + str(brsize))
+                if len(self.r_tags) == 0:
+                    self.r_tags = range(brsize)
+                values = range(brsize)
+                index = 0
+                for br in brlist:
+                    tag = br.attributes['tag'].value
+                    value = br.attributes['value'].value
+                    if tag in self.r_tags:
+                        idx = self.r_tags.index(tag)
+                        values[idx] = value
+                    else:
+                        self.r_tags[index] = tag
+                        values[index] = value
+                    index = index + 1
+                    # print('tag:' + br.attributes['tag'].value
+                    #         + ', metric:' + br.attributes['metric'].value
+                    #         + ', value:' + br.attributes['value'].value
+                    #         + ', iterations:' + br.attributes['iterations'].value
+                    #         )
+                self.r_values.append(values)
         
     def getSha1(self):
         result = True
@@ -140,9 +158,9 @@ class QtQuickControls2BenchmarksRunner:
         for resultfile in self.results:
             shutil.copy(resultfile, targetdir)
                 
-    def getLatestSha1(self, modulepath):
+    def getLatestSha1(self, modulepath, num=1):
         os.chdir(modulepath)
-        p = subprocess.Popen(['git', 'log', '-1', '--pretty=format:%H'],
+        p = subprocess.Popen(['git', 'log', '-' + str(num), '--pretty=format:%H'],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         out, err = p.communicate()
         return out
@@ -150,6 +168,37 @@ class QtQuickControls2BenchmarksRunner:
     def test(self):
         print(','.join(self.modules))
         print('make -j9 module-' + ' module-'.join(self.modules))
+
+    def analyzer(self):
+        sha1s = self.getLatestSha1(self.sourcedir + '/qt5/qtquickcontrols2', 100)
+        print('sha1s are ' + sha1s)
+        sha1list = sha1s.splitlines(sha1s.count('\n'))
+        for sha1 in reversed(sha1list):
+            sha1 = sha1.rstrip()
+            #print('sha1 is ' + sha1)
+            resultfile = self.resultdir + '/' + sha1 + '/result-tst_creationtime.xml';
+            if os.path.exists(resultfile):
+                self.r_sha1s.append(sha1)
+                #print('found result file in ' + resultfile)
+                self.checkResult(resultfile)
+        result = 'var data = [\n'
+        result = result + '[ \'sha1s\', \'' + '\' , \''.join(self.r_sha1s) + '\' ],\n'
+        index = 0
+        vlen = len(self.r_values)
+        print('vlen:' + str(vlen))
+        for tag in self.r_tags:
+            if index != 0:
+                result = result + ', '
+            result = result + '[ \'' + tag + '\', '
+            for vindex, values in enumerate(self.r_values, start=0):   # default is zero
+                result = result + values[index]
+                print('vindex:' + str(vindex))
+                if vindex < vlen-1:
+                    result = result + ', '
+            result = result + ' ]\n'
+            index = index + 1
+        result = result + '];\n'
+        print(result)
                         
 if __name__ == "__main__":
         runner = QtQuickControls2BenchmarksRunner()
@@ -159,3 +208,4 @@ if __name__ == "__main__":
                runner.buildAndRunTest()
                print(','.join(runner.results))
                runner.saveResults()
+#        runner.analyzer()
