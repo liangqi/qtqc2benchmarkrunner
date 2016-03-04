@@ -106,7 +106,7 @@ class QtQuickControls2BenchmarksRunner:
                 #print('brsize:' + str(brsize))
                 if len(r_tags) == 0:
                     r_tags = range(brsize)
-                values = range(brsize)
+                values = range(len(r_tags))
                 index = 0
                 for br in brlist:
                     tag = br.attributes['tag'].value
@@ -185,6 +185,40 @@ class QtQuickControls2BenchmarksRunner:
                 rdates.append(tmp[1])
         return (rsha1s, rdates)
 
+    def analyzer3(self, r_sha1s, category):
+        r_tags = list()
+        r_values = list()
+        for c in category:
+            for sha1 in r_sha1s:
+                sha1 = sha1.rstrip()
+                #print('sha1 is ' + sha1)
+                resultfile = self.resultdir + '/' + sha1 + '/result-tst_creationtime.xml';
+                if os.path.exists(resultfile):
+                    #print('found result file in ' + resultfile)
+                    r_tags, r_values = self.checkResult(resultfile, c, r_tags, r_values)
+        result = ' = [\n'
+        result = result + '[ \'' + '\' , \''.join(r_sha1s) + '\', \'' + '\' , \''.join(category) + '\' ],\n'
+        index = 0
+        vlen = len(r_values)
+        #print('vlen:' + str(vlen))
+        for tag in r_tags:
+            if index != 0:
+                result = result + ', '
+            result = result + '[ \'' + tag + '\', '
+            for vindex, values in enumerate(r_values, start=0):   # default is zero
+                v = values[index]
+                if v == index:
+                    v = 0
+                result = result + str(v)
+                #print('vindex:' + str(vindex))
+                if vindex < vlen-1:
+                    result = result + ', '
+            result = result + ' ]\n'
+            index = index + 1
+        result = result + '];\n'
+        #print(result)
+        return result
+
     def analyzer1(self, r_sha1s, tag):
         r_tags = list()
         r_values = list()
@@ -250,13 +284,13 @@ class QtQuickControls2BenchmarksRunner:
         print('dates: ' + ','.join(r_dates))
         t_sha1s = list()
         t_sha1s.append(r_sha1s[len(r_sha1s)-1])
-        category = ['controls', 'material', 'universal', 'calendar']
+        category = ['controls', 'material', 'universal']
+        s = 'var mydata' + self.analyzer3(t_sha1s, category)
+        sfn = self.resultdir + '/latest.js'
+        jsfile = open(sfn, "w")
+        jsfile.write(s)
+        jsfile.close()
         for c in category:
-            s = 'var mydata' + self.analyzer1(t_sha1s, c)
-            sfn = self.resultdir + '/latest-' + c + '.js'
-            jsfile = open(sfn, "w")
-            jsfile.write(s)
-            jsfile.close()
             s = 'var mydata' + self.analyzer2(r_sha1s, r_dates, c)
             sfn = self.resultdir + '/' + c + '.js'
             jsfile = open(sfn, "w")
